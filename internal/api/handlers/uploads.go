@@ -63,17 +63,8 @@ func (h *UploadHandler) PatchUpload(w http.ResponseWriter, r *http.Request) {
 	repo := api.GetParam(r, "name")
 	uploadID := api.GetParam(r, "uuid")
 
-	// Parse Content-Range header
-	contentRange := r.Header.Get("Content-Range")
-	offset, err := parseContentRange(contentRange)
-	if err != nil {
-		errors.WriteErrorResponse(w, http.StatusBadRequest,
-			errors.BlobUploadInvalid("invalid content range"))
-		return
-	}
-
-	// Write chunk
-	err = h.store.WriteUploadChunk(r.Context(), uploadID, offset, r.Body)
+	// Get current upload status to validate offset
+	currentOffset, err := h.store.GetUploadStatus(r.Context(), uploadID)
 	if err != nil {
 		if err == storage.ErrUploadNotFound {
 			errors.WriteErrorResponse(w, http.StatusNotFound,
@@ -85,8 +76,39 @@ func (h *UploadHandler) PatchUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get current status
-	currentOffset, err := h.store.GetUploadStatus(r.Context(), uploadID)
+	// Parse Content-Range header
+	contentRange := r.Header.Get("Content-Range")
+	requestedOffset, err := parseContentRange(contentRange)
+	if err != nil {
+		errors.WriteErrorResponse(w, http.StatusBadRequest,
+			errors.BlobUploadInvalid("invalid content range"))
+		return
+	}
+
+	// Validate that the requested offset matches the expected offset
+	if requestedOffset != currentOffset {
+		// Return 416 Range Not Satisfiable for out-of-order or duplicate chunks
+		w.Header().Set("Location", fmt.Sprintf("/v2/%s/blobs/uploads/%s", repo, uploadID))
+		w.Header().Set("Range", fmt.Sprintf("0-%d", currentOffset-1))
+		w.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
+		return
+	}
+
+	// Write chunk
+	err = h.store.WriteUploadChunk(r.Context(), uploadID, requestedOffset, r.Body)
+	if err != nil {
+		if err == storage.ErrUploadNotFound {
+			errors.WriteErrorResponse(w, http.StatusNotFound,
+				errors.BlobUploadUnknown(uploadID))
+			return
+		}
+		errors.WriteErrorResponse(w, http.StatusInternalServerError,
+			errors.NewOCIError("UNKNOWN", "internal server error", err.Error()))
+		return
+	}
+
+	// Get updated status after write
+	newOffset, err := h.store.GetUploadStatus(r.Context(), uploadID)
 	if err != nil {
 		errors.WriteErrorResponse(w, http.StatusInternalServerError,
 			errors.NewOCIError("UNKNOWN", "internal server error", err.Error()))
@@ -97,7 +119,7 @@ func (h *UploadHandler) PatchUpload(w http.ResponseWriter, r *http.Request) {
 	location := fmt.Sprintf("/v2/%s/blobs/uploads/%s", repo, uploadID)
 
 	w.Header().Set("Location", location)
-	w.Header().Set("Range", fmt.Sprintf("0-%d", currentOffset-1))
+	w.Header().Set("Range", fmt.Sprintf("0-%d", newOffset-1))
 	w.WriteHeader(http.StatusAccepted)
 }
 
