@@ -296,18 +296,8 @@ func (h *ManifestHandler) verifyManifestBlobs(r *http.Request, manifest *types.M
 		}
 	}
 
-	// For image index, check referenced manifests
-	for _, subManifest := range manifest.Manifests {
-		if subManifest.Digest != "" {
-			exists, err := h.store.BlobExists(r.Context(), subManifest.Digest)
-			if err != nil {
-				return errors.NewOCIError("UNKNOWN", "internal server error", err.Error())
-			}
-			if !exists {
-				return errors.ManifestBlobUnknown(subManifest.Digest)
-			}
-		}
-	}
+	// For image index, referenced manifests might not exist yet - this is allowed by OCI spec
+	// We'll skip validation of referenced manifests in image indexes
 
 	return nil
 }

@@ -345,12 +345,11 @@ func (s *Store) GetReferrers(ctx context.Context, repo, digest string) ([]types.
 				Size:      manifest.Size,
 			}
 
-			// Set artifactType for filtering
-			if manifest.MediaType == types.MediaTypes.ImageManifest {
-				// For image manifests, use config mediaType as artifactType if no explicit artifactType
-				if manifest.Config.MediaType != "" {
-					descriptor.ArtifactType = manifest.Config.MediaType
-				}
+			// Set artifactType for filtering with priority: explicit ArtifactType > config.MediaType
+			if manifest.ArtifactType != "" {
+				descriptor.ArtifactType = manifest.ArtifactType
+			} else if manifest.Config.MediaType != "" {
+				descriptor.ArtifactType = manifest.Config.MediaType
 			}
 
 			// Copy annotations if present

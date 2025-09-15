@@ -13,6 +13,7 @@ type Manifest struct {
 	Layers        []Descriptor      `json:"layers,omitempty"`
 	Manifests     []Descriptor      `json:"manifests,omitempty"` // For image index
 	Subject       *Descriptor       `json:"subject,omitempty"`
+	ArtifactType  string            `json:"artifactType,omitempty"`
 	Annotations   map[string]string `json:"annotations,omitempty"`
 
 	// Internal fields
