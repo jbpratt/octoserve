@@ -8,7 +8,7 @@ import (
 
 func TestHTTPMetrics(t *testing.T) {
 	registry := NewRegistry()
-	
+
 	// Create a test handler
 	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

@@ -36,16 +36,16 @@ func RequestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
-			
+
 			// Wrap the response writer
 			rw := &responseWriter{
 				ResponseWriter: w,
 				status:         http.StatusOK,
 			}
-			
+
 			// Process request
 			next.ServeHTTP(rw, r)
-			
+
 			// Log the request
 			duration := time.Since(start)
 			logger.Info("HTTP request",

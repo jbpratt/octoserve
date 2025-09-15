@@ -85,7 +85,7 @@ func TestRegistryHandler_Methods(t *testing.T) {
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:           "HEAD request", 
+			name:           "HEAD request",
 			method:         "HEAD",
 			expectedStatus: http.StatusOK,
 		},

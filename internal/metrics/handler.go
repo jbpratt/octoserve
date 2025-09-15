@@ -39,7 +39,7 @@ func basicAuth(handler http.Handler, username, password string) http.Handler {
 		if !ok ||
 			subtle.ConstantTimeCompare([]byte(user), []byte(username)) != 1 ||
 			subtle.ConstantTimeCompare([]byte(pass), []byte(password)) != 1 {
-			
+
 			w.Header().Set("WWW-Authenticate", `Basic realm="Metrics"`)
 			w.WriteHeader(http.StatusUnauthorized)
 			w.Write([]byte("Unauthorized\n"))

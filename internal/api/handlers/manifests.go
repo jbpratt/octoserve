@@ -31,7 +31,7 @@ func NewManifestHandler(store storage.Store) *ManifestHandler {
 func (h *ManifestHandler) GetManifest(w http.ResponseWriter, r *http.Request) {
 	repo := api.GetParam(r, "name")
 	reference := api.GetParam(r, "reference")
-	
+
 	// Get manifest
 	manifest, err := h.store.GetManifest(r.Context(), repo, reference)
 	if err != nil {
@@ -44,13 +44,13 @@ func (h *ManifestHandler) GetManifest(w http.ResponseWriter, r *http.Request) {
 			errors.NewOCIError("UNKNOWN", "internal server error", err.Error()))
 		return
 	}
-	
+
 	// Set content type based on manifest media type
 	contentType := manifest.MediaType
 	if contentType == "" {
 		contentType = types.MediaTypes.ImageManifest
 	}
-	
+
 	// Handle content negotiation
 	if accept := r.Header.Get("Accept"); accept != "" {
 		if !isAcceptableMediaType(accept, contentType) {
@@ -59,7 +59,7 @@ func (h *ManifestHandler) GetManifest(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	
+
 	// Marshal manifest
 	data, err := json.Marshal(manifest)
 	if err != nil {
@@ -67,12 +67,12 @@ func (h *ManifestHandler) GetManifest(w http.ResponseWriter, r *http.Request) {
 			errors.NewOCIError("UNKNOWN", "internal server error", err.Error()))
 		return
 	}
-	
+
 	// Set headers
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
 	w.Header().Set("Docker-Content-Digest", manifest.Digest)
-	
+
 	w.WriteHeader(http.StatusOK)
 	w.Write(data)
 }
@@ -81,7 +81,7 @@ func (h *ManifestHandler) GetManifest(w http.ResponseWriter, r *http.Request) {
 func (h *ManifestHandler) HeadManifest(w http.ResponseWriter, r *http.Request) {
 	repo := api.GetParam(r, "name")
 	reference := api.GetParam(r, "reference")
-	
+
 	// Check if manifest exists
 	exists, err := h.store.ManifestExists(r.Context(), repo, reference)
 	if err != nil {
@@ -89,13 +89,13 @@ func (h *ManifestHandler) HeadManifest(w http.ResponseWriter, r *http.Request) {
 			errors.NewOCIError("UNKNOWN", "internal server error", err.Error()))
 		return
 	}
-	
+
 	if !exists {
 		errors.WriteErrorResponse(w, http.StatusNotFound,
 			errors.ManifestUnknown(reference))
 		return
 	}
-	
+
 	// Get manifest for headers
 	manifest, err := h.store.GetManifest(r.Context(), repo, reference)
 	if err != nil {
@@ -103,18 +103,18 @@ func (h *ManifestHandler) HeadManifest(w http.ResponseWriter, r *http.Request) {
 			errors.NewOCIError("UNKNOWN", "internal server error", err.Error()))
 		return
 	}
-	
+
 	// Set content type
 	contentType := manifest.MediaType
 	if contentType == "" {
 		contentType = types.MediaTypes.ImageManifest
 	}
-	
+
 	// Set headers
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Content-Length", strconv.FormatInt(manifest.Size, 10))
 	w.Header().Set("Docker-Content-Digest", manifest.Digest)
-	
+
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -122,7 +122,7 @@ func (h *ManifestHandler) HeadManifest(w http.ResponseWriter, r *http.Request) {
 func (h *ManifestHandler) PutManifest(w http.ResponseWriter, r *http.Request) {
 	repo := api.GetParam(r, "name")
 	reference := api.GetParam(r, "reference")
-	
+
 	// Read manifest data
 	data, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -130,7 +130,7 @@ func (h *ManifestHandler) PutManifest(w http.ResponseWriter, r *http.Request) {
 			errors.ManifestInvalid("failed to read manifest"))
 		return
 	}
-	
+
 	// Parse manifest
 	manifest, err := types.ParseManifest(data)
 	if err != nil {
@@ -138,7 +138,7 @@ func (h *ManifestHandler) PutManifest(w http.ResponseWriter, r *http.Request) {
 			errors.ManifestInvalid("invalid manifest format"))
 		return
 	}
-	
+
 	// Validate content type
 	contentType := r.Header.Get("Content-Type")
 	if contentType != "" && manifest.MediaType != "" {
@@ -148,7 +148,7 @@ func (h *ManifestHandler) PutManifest(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	
+
 	// Set media type if not present
 	if manifest.MediaType == "" {
 		if contentType != "" {
@@ -157,16 +157,16 @@ func (h *ManifestHandler) PutManifest(w http.ResponseWriter, r *http.Request) {
 			manifest.MediaType = types.MediaTypes.ImageManifest
 		}
 	}
-	
+
 	// Calculate digest
 	manifest.Digest = calculateDigest(data)
-	
+
 	// Verify referenced blobs exist
 	if err := h.verifyManifestBlobs(r, manifest); err != nil {
 		errors.WriteErrorResponse(w, http.StatusBadRequest, err)
 		return
 	}
-	
+
 	// Store manifest
 	err = h.store.PutManifest(r.Context(), repo, reference, manifest)
 	if err != nil {
@@ -174,10 +174,10 @@ func (h *ManifestHandler) PutManifest(w http.ResponseWriter, r *http.Request) {
 			errors.NewOCIError("UNKNOWN", "internal server error", err.Error()))
 		return
 	}
-	
+
 	// Return location
 	location := r.URL.Path
-	
+
 	w.Header().Set("Location", location)
 	w.Header().Set("Docker-Content-Digest", manifest.Digest)
 	w.WriteHeader(http.StatusCreated)
@@ -187,7 +187,7 @@ func (h *ManifestHandler) PutManifest(w http.ResponseWriter, r *http.Request) {
 func (h *ManifestHandler) DeleteManifest(w http.ResponseWriter, r *http.Request) {
 	repo := api.GetParam(r, "name")
 	reference := api.GetParam(r, "reference")
-	
+
 	// Check if manifest exists
 	exists, err := h.store.ManifestExists(r.Context(), repo, reference)
 	if err != nil {
@@ -195,13 +195,13 @@ func (h *ManifestHandler) DeleteManifest(w http.ResponseWriter, r *http.Request)
 			errors.NewOCIError("UNKNOWN", "internal server error", err.Error()))
 		return
 	}
-	
+
 	if !exists {
 		errors.WriteErrorResponse(w, http.StatusNotFound,
 			errors.ManifestUnknown(reference))
 		return
 	}
-	
+
 	// Delete manifest
 	err = h.store.DeleteManifest(r.Context(), repo, reference)
 	if err != nil {
@@ -209,18 +209,18 @@ func (h *ManifestHandler) DeleteManifest(w http.ResponseWriter, r *http.Request)
 			errors.NewOCIError("UNKNOWN", "internal server error", err.Error()))
 		return
 	}
-	
+
 	w.WriteHeader(http.StatusAccepted)
 }
 
 // ListTags handles GET /v2/{name}/tags/list
 func (h *ManifestHandler) ListTags(w http.ResponseWriter, r *http.Request) {
 	repo := api.GetParam(r, "name")
-	
+
 	// Get query parameters for pagination
 	nStr := r.URL.Query().Get("n")
 	last := r.URL.Query().Get("last")
-	
+
 	// Get all tags
 	allTags, err := h.store.ListTags(r.Context(), repo)
 	if err != nil {
@@ -228,13 +228,13 @@ func (h *ManifestHandler) ListTags(w http.ResponseWriter, r *http.Request) {
 			errors.NewOCIError("UNKNOWN", "internal server error", err.Error()))
 		return
 	}
-	
+
 	// Apply pagination
 	tags := allTags
 	if last != "" {
 		tags = filterTagsAfter(allTags, last)
 	}
-	
+
 	if nStr != "" {
 		if n, err := strconv.Atoi(nStr); err == nil && n > 0 {
 			if len(tags) > n {
@@ -249,7 +249,7 @@ func (h *ManifestHandler) ListTags(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	
+
 	// Create response
 	response := struct {
 		Name string   `json:"name"`
@@ -258,7 +258,7 @@ func (h *ManifestHandler) ListTags(w http.ResponseWriter, r *http.Request) {
 		Name: repo,
 		Tags: tags,
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(response)
@@ -276,7 +276,7 @@ func (h *ManifestHandler) verifyManifestBlobs(r *http.Request, manifest *types.M
 			return errors.ManifestBlobUnknown(manifest.Config.Digest)
 		}
 	}
-	
+
 	// Check layer blobs
 	for _, layer := range manifest.Layers {
 		if layer.Digest != "" {
@@ -289,7 +289,7 @@ func (h *ManifestHandler) verifyManifestBlobs(r *http.Request, manifest *types.M
 			}
 		}
 	}
-	
+
 	// For image index, check referenced manifests
 	for _, subManifest := range manifest.Manifests {
 		if subManifest.Digest != "" {
@@ -302,7 +302,7 @@ func (h *ManifestHandler) verifyManifestBlobs(r *http.Request, manifest *types.M
 			}
 		}
 	}
-	
+
 	return nil
 }
 

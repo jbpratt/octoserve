@@ -97,7 +97,7 @@ func TestMetricsOperations(t *testing.T) {
 	registry.DecUploadSessionsActive()
 	registry.RecordStorageOperation("get_blob", "success", 0.1)
 	registry.RecordStorageError("put_blob", "digest_mismatch")
-	registry.SetStorageDiskUsage(1024*1024*1024) // 1GB
+	registry.SetStorageDiskUsage(1024 * 1024 * 1024) // 1GB
 	registry.SetRepositoriesTotal(10)
 	registry.SetTagsTotal(25)
 

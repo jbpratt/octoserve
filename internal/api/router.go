@@ -45,21 +45,21 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		if route.Method != req.Method {
 			continue
 		}
-		
+
 		matches := route.Pattern.FindStringSubmatch(req.URL.Path)
 		if matches == nil {
 			continue
 		}
-		
+
 		// Extract parameters and add to request context
 		if len(matches) > 1 {
 			req = addParamsToRequest(req, route.Params, matches[1:])
 		}
-		
+
 		route.Handler(w, req)
 		return
 	}
-	
+
 	// No route found
 	http.NotFound(w, req)
 }
@@ -67,14 +67,14 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 // patternToRegex converts a pattern like "/v2/{name}/blobs/{digest}" to regex
 func patternToRegex(pattern string) (string, []string) {
 	var params []string
-	
+
 	// Replace {param} with named capture groups
 	paramRegex := regexp.MustCompile(`\{([^}]+)\}`)
-	
+
 	regex := paramRegex.ReplaceAllStringFunc(pattern, func(match string) string {
 		paramName := match[1 : len(match)-1] // Remove { and }
 		params = append(params, paramName)
-		
+
 		switch paramName {
 		case "name":
 			// Repository name pattern: [a-z0-9]+((\.|_|__|-+)[a-z0-9]+)*(\/[a-z0-9]+((\.|_|__|-+)[a-z0-9]+)*)*
@@ -93,10 +93,10 @@ func patternToRegex(pattern string) (string, []string) {
 			return `([^/]+)`
 		}
 	})
-	
+
 	// Escape other regex characters
 	regex = regexp.QuoteMeta(regex)
-	
+
 	// Restore the capture groups
 	regex = strings.ReplaceAll(regex, `\(`, `(`)
 	regex = strings.ReplaceAll(regex, `\)`, `)`)
@@ -111,7 +111,7 @@ func patternToRegex(pattern string) (string, []string) {
 	regex = strings.ReplaceAll(regex, `\:`, `:`)
 	regex = strings.ReplaceAll(regex, `\-`, `-`)
 	regex = strings.ReplaceAll(regex, `\.`, `.`)
-	
+
 	return regex, params
 }
 
@@ -120,17 +120,17 @@ func addParamsToRequest(req *http.Request, paramNames []string, paramValues []st
 	if len(paramNames) != len(paramValues) {
 		return req
 	}
-	
+
 	// Store parameters in request URL values
 	query := req.URL.Query()
 	for i, name := range paramNames {
 		query.Set("route_"+name, paramValues[i])
 	}
-	
+
 	// Create new request with updated query parameters
 	newReq := req.Clone(req.Context())
 	newReq.URL.RawQuery = query.Encode()
-	
+
 	return newReq
 }
 

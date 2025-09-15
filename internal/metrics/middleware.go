@@ -9,9 +9,9 @@ import (
 // responseWriter wraps http.ResponseWriter to capture metrics
 type responseWriter struct {
 	http.ResponseWriter
-	status       int
-	size         int64
-	wroteHeader  bool
+	status      int
+	size        int64
+	wroteHeader bool
 }
 
 func (rw *responseWriter) WriteHeader(status int) {
@@ -42,7 +42,7 @@ func HTTPMetrics(registry *Registry) func(http.Handler) http.Handler {
 			}
 
 			start := time.Now()
-			
+
 			// Wrap the response writer to capture metrics
 			wrapped := &responseWriter{
 				ResponseWriter: w,

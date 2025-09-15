@@ -64,7 +64,7 @@ func main() {
 	// Initialize metrics if enabled
 	var metricsRegistry *metrics.Registry
 	var store storage.Store = baseStore
-	
+
 	if cfg.Metrics.Enabled {
 		metricsRegistry = metrics.NewRegistry()
 		store = metrics.NewStorageMetrics(baseStore, metricsRegistry)

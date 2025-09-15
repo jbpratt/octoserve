@@ -63,10 +63,10 @@ func NewOCIErrorResponse(errors ...*OCIError) *OCIErrorResponse {
 // WriteErrorResponse writes an OCI-compliant error response
 func WriteErrorResponse(w http.ResponseWriter, statusCode int, errors ...*OCIError) {
 	response := NewOCIErrorResponse(errors...)
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	
+
 	json.NewEncoder(w).Encode(response)
 }
 

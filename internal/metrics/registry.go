@@ -237,11 +237,11 @@ func NormalizeEndpoint(path string) string {
 	if path == "/v2/" {
 		return "/v2/"
 	}
-	
+
 	// Extract endpoint patterns
 	if len(path) >= 4 && path[:4] == "/v2/" {
 		segments := splitPath(path[4:]) // Remove "/v2/" prefix
-		
+
 		switch len(segments) {
 		case 0:
 			return "/v2/"
@@ -266,7 +266,7 @@ func NormalizeEndpoint(path string) string {
 			}
 		}
 	}
-	
+
 	// Fallback to the original path for unknown patterns
 	return path
 }
@@ -276,10 +276,10 @@ func splitPath(path string) []string {
 	if path == "" {
 		return []string{}
 	}
-	
+
 	segments := []string{}
 	start := 0
-	
+
 	for i, c := range path {
 		if c == '/' {
 			if i > start {
@@ -288,11 +288,11 @@ func splitPath(path string) []string {
 			start = i + 1
 		}
 	}
-	
+
 	// Add the last segment
 	if start < len(path) {
 		segments = append(segments, path[start:])
 	}
-	
+
 	return segments
 }

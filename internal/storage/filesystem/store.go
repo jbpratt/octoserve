@@ -33,13 +33,13 @@ func New(basePath string) (*Store, error) {
 		filepath.Join(basePath, "manifests"),
 		filepath.Join(basePath, "uploads"),
 	}
-	
+
 	for _, dir := range dirs {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return nil, fmt.Errorf("failed to create directory %s: %w", dir, err)
 		}
 	}
-	
+
 	return &Store{
 		basePath: basePath,
 	}, nil
@@ -61,10 +61,10 @@ func (s *Store) blobPath(digestStr string) string {
 		}
 		return filepath.Join(s.basePath, "blobs", algorithm, hex)
 	}
-	
+
 	algorithm := d.Algorithm().String()
 	hex := d.Hex()
-	
+
 	// Store as blobs/sha256/ab/cd/abcd...
 	if len(hex) >= 4 {
 		return filepath.Join(s.basePath, "blobs", algorithm, hex[:2], hex[2:4], hex)
@@ -100,12 +100,12 @@ func (s *Store) GetBlob(ctx context.Context, digest string) (io.ReadCloser, erro
 // PutBlob implements BlobStore
 func (s *Store) PutBlob(ctx context.Context, digest string, content io.Reader) error {
 	path := s.blobPath(digest)
-	
+
 	// Create parent directories
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return fmt.Errorf("failed to create blob directory: %w", err)
 	}
-	
+
 	// Create temporary file first
 	tempPath := path + ".tmp"
 	tempFile, err := os.Create(tempPath)
@@ -116,30 +116,30 @@ func (s *Store) PutBlob(ctx context.Context, digest string, content io.Reader) e
 		tempFile.Close()
 		os.Remove(tempPath) // Clean up on error
 	}()
-	
+
 	// Copy content while calculating digest
 	hasher := sha256.New()
 	writer := io.MultiWriter(tempFile, hasher)
-	
+
 	if _, err := io.Copy(writer, content); err != nil {
 		return fmt.Errorf("failed to write blob content: %w", err)
 	}
-	
+
 	if err := tempFile.Close(); err != nil {
 		return fmt.Errorf("failed to close temporary file: %w", err)
 	}
-	
+
 	// Verify digest
 	calculated := "sha256:" + hex.EncodeToString(hasher.Sum(nil))
 	if calculated != digest {
 		return fmt.Errorf("digest mismatch: expected %s, got %s", digest, calculated)
 	}
-	
+
 	// Atomic move
 	if err := os.Rename(tempPath, path); err != nil {
 		return fmt.Errorf("failed to move blob to final location: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -182,7 +182,7 @@ func (s *Store) GetBlobSize(ctx context.Context, digest string) (int64, error) {
 // GetManifest implements ManifestStore
 func (s *Store) GetManifest(ctx context.Context, repo, reference string) (*types.Manifest, error) {
 	path := s.manifestPath(repo, reference)
-	
+
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -190,46 +190,46 @@ func (s *Store) GetManifest(ctx context.Context, repo, reference string) (*types
 		}
 		return nil, fmt.Errorf("failed to read manifest: %w", err)
 	}
-	
+
 	manifest, err := types.ParseManifest(data)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse manifest: %w", err)
 	}
-	
+
 	manifest.Repository = repo
 	if !strings.HasPrefix(reference, "sha256:") {
 		manifest.Tag = reference
 	}
-	
+
 	return manifest, nil
 }
 
 // PutManifest implements ManifestStore
 func (s *Store) PutManifest(ctx context.Context, repo, reference string, manifest *types.Manifest) error {
 	path := s.manifestPath(repo, reference)
-	
+
 	// Create parent directories
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return fmt.Errorf("failed to create manifest directory: %w", err)
 	}
-	
+
 	// Marshal manifest
 	data, err := json.Marshal(manifest)
 	if err != nil {
 		return fmt.Errorf("failed to marshal manifest: %w", err)
 	}
-	
+
 	// Write to temporary file first
 	tempPath := path + ".tmp"
 	if err := os.WriteFile(tempPath, data, 0644); err != nil {
 		return fmt.Errorf("failed to write temporary manifest: %w", err)
 	}
-	
+
 	// Atomic move
 	if err := os.Rename(tempPath, path); err != nil {
 		return fmt.Errorf("failed to move manifest to final location: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -247,7 +247,7 @@ func (s *Store) DeleteManifest(ctx context.Context, repo, reference string) erro
 func (s *Store) ListTags(ctx context.Context, repo string) ([]string, error) {
 	cleanRepo := strings.ReplaceAll(repo, "/", "_")
 	repoPath := filepath.Join(s.basePath, "manifests", cleanRepo)
-	
+
 	entries, err := os.ReadDir(repoPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -255,14 +255,14 @@ func (s *Store) ListTags(ctx context.Context, repo string) ([]string, error) {
 		}
 		return nil, fmt.Errorf("failed to read repository directory: %w", err)
 	}
-	
+
 	var tags []string
 	for _, entry := range entries {
 		if !entry.IsDir() && !strings.HasPrefix(entry.Name(), "sha256:") {
 			tags = append(tags, entry.Name())
 		}
 	}
-	
+
 	return tags, nil
 }
 
@@ -283,23 +283,23 @@ func (s *Store) ManifestExists(ctx context.Context, repo, reference string) (boo
 func (s *Store) CreateUpload(ctx context.Context, repo string) (*types.Upload, error) {
 	uploadID := uuid.New().String()
 	upload := types.NewUpload(uploadID, repo)
-	
+
 	// Create upload directory and temp file
 	uploadDir := filepath.Join(s.basePath, "uploads")
 	if err := os.MkdirAll(uploadDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create upload directory: %w", err)
 	}
-	
+
 	tempFile := s.uploadPath(uploadID)
 	upload.SetTempFile(tempFile)
-	
+
 	// Create empty temp file
 	file, err := os.Create(tempFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create upload file: %w", err)
 	}
 	file.Close()
-	
+
 	s.uploads.Store(uploadID, upload)
 	return upload, nil
 }
@@ -319,29 +319,29 @@ func (s *Store) WriteUploadChunk(ctx context.Context, uploadID string, offset in
 	if err != nil {
 		return err
 	}
-	
+
 	tempFile := upload.GetTempFile()
 	file, err := os.OpenFile(tempFile, os.O_WRONLY, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to open upload file: %w", err)
 	}
 	defer file.Close()
-	
+
 	// Seek to offset
 	if _, err := file.Seek(offset, 0); err != nil {
 		return fmt.Errorf("failed to seek to offset: %w", err)
 	}
-	
+
 	// Write chunk
 	written, err := io.Copy(file, chunk)
 	if err != nil {
 		return fmt.Errorf("failed to write chunk: %w", err)
 	}
-	
+
 	// Update upload info
 	upload.SetOffset(offset + written)
 	upload.AddSize(written)
-	
+
 	return nil
 }
 
@@ -351,25 +351,25 @@ func (s *Store) CompleteUpload(ctx context.Context, uploadID string, digest stri
 	if err != nil {
 		return err
 	}
-	
+
 	tempFile := upload.GetTempFile()
-	
+
 	// Open temp file for reading
 	file, err := os.Open(tempFile)
 	if err != nil {
 		return fmt.Errorf("failed to open upload file: %w", err)
 	}
 	defer file.Close()
-	
+
 	// Store as blob
 	if err := s.PutBlob(ctx, digest, file); err != nil {
 		return fmt.Errorf("failed to store blob: %w", err)
 	}
-	
+
 	// Clean up
 	s.uploads.Delete(uploadID)
 	os.Remove(tempFile)
-	
+
 	return nil
 }
 
@@ -379,11 +379,11 @@ func (s *Store) CancelUpload(ctx context.Context, uploadID string) error {
 	if err != nil {
 		return err
 	}
-	
+
 	tempFile := upload.GetTempFile()
 	s.uploads.Delete(uploadID)
 	os.Remove(tempFile)
-	
+
 	return nil
 }
 
