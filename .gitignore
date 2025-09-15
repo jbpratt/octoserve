@@ -1,3 +1,6 @@
 distribution-spec
 bin/
 data/
+test-results/
+test-data/
+test-octoserve.pid
