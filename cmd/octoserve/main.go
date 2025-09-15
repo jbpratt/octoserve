@@ -76,6 +76,7 @@ func main() {
 	blobHandler := handlers.NewBlobHandler(store)
 	manifestHandler := handlers.NewManifestHandler(store)
 	uploadHandler := handlers.NewUploadHandler(store)
+	referrersHandler := handlers.NewReferrersHandler(store)
 
 	// Setup router
 	router := api.NewRouter()
@@ -103,6 +104,9 @@ func main() {
 
 	// Tag listing
 	router.GET("/v2/{name}/tags/list", manifestHandler.ListTags)
+
+	// Referrers endpoints
+	router.GET("/v2/{name}/referrers/{digest}", referrersHandler.GetReferrers)
 
 	// Add metrics endpoint if enabled
 	if cfg.Metrics.Enabled {

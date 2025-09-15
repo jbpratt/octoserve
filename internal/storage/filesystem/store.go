@@ -206,17 +206,34 @@ func (s *Store) GetManifest(ctx context.Context, repo, reference string) (*types
 
 // PutManifest implements ManifestStore
 func (s *Store) PutManifest(ctx context.Context, repo, reference string, manifest *types.Manifest) error {
-	path := s.manifestPath(repo, reference)
-
-	// Create parent directories
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-		return fmt.Errorf("failed to create manifest directory: %w", err)
-	}
-
-	// Marshal manifest
+	// Marshal manifest once
 	data, err := json.Marshal(manifest)
 	if err != nil {
 		return fmt.Errorf("failed to marshal manifest: %w", err)
+	}
+
+	// Store by the given reference (tag or digest)
+	path := s.manifestPath(repo, reference)
+	if err := s.writeManifestFile(path, data); err != nil {
+		return err
+	}
+
+	// If storing by tag, also store by digest for retrieval
+	if !strings.HasPrefix(reference, "sha256:") && manifest.Digest != "" {
+		digestPath := s.manifestPath(repo, manifest.Digest)
+		if err := s.writeManifestFile(digestPath, data); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// writeManifestFile writes manifest data to a file atomically
+func (s *Store) writeManifestFile(path string, data []byte) error {
+	// Create parent directories
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return fmt.Errorf("failed to create manifest directory: %w", err)
 	}
 
 	// Write to temporary file first
@@ -277,6 +294,78 @@ func (s *Store) ManifestExists(ctx context.Context, repo, reference string) (boo
 		return false, err
 	}
 	return true, nil
+}
+
+// GetReferrers implements ManifestStore
+func (s *Store) GetReferrers(ctx context.Context, repo, digest string) ([]types.Descriptor, error) {
+	var referrers []types.Descriptor
+
+	// Get the repository path
+	cleanRepo := strings.ReplaceAll(repo, "/", "_")
+	repoPath := filepath.Join(s.basePath, "manifests", cleanRepo)
+
+	// Check if repository exists
+	if _, err := os.Stat(repoPath); os.IsNotExist(err) {
+		// Return empty list for non-existent repositories
+		return referrers, nil
+	}
+
+	// Read all manifest files in the repository
+	entries, err := os.ReadDir(repoPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read repository directory: %w", err)
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		// Read manifest file
+		manifestPath := filepath.Join(repoPath, entry.Name())
+		data, err := os.ReadFile(manifestPath)
+		if err != nil {
+			// Skip files that can't be read
+			continue
+		}
+
+		// Parse manifest to check subject field
+		manifest, err := types.ParseManifest(data)
+		if err != nil {
+			// Skip invalid manifests
+			continue
+		}
+
+		// Check if this manifest references the target digest as subject
+		if manifest.Subject != nil && manifest.Subject.Digest == digest {
+			// Create descriptor for this referring manifest
+			descriptor := types.Descriptor{
+				MediaType: manifest.MediaType,
+				Digest:    manifest.Digest,
+				Size:      manifest.Size,
+			}
+
+			// Set artifactType for filtering
+			if manifest.MediaType == types.MediaTypes.ImageManifest {
+				// For image manifests, use config mediaType as artifactType if no explicit artifactType
+				if manifest.Config.MediaType != "" {
+					descriptor.ArtifactType = manifest.Config.MediaType
+				}
+			}
+
+			// Copy annotations if present
+			if manifest.Annotations != nil {
+				descriptor.Annotations = make(map[string]string)
+				for k, v := range manifest.Annotations {
+					descriptor.Annotations[k] = v
+				}
+			}
+
+			referrers = append(referrers, descriptor)
+		}
+	}
+
+	return referrers, nil
 }
 
 // CreateUpload implements UploadManager

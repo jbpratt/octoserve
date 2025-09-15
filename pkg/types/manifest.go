@@ -23,6 +23,14 @@ type Manifest struct {
 	CreatedAt  time.Time `json:"-"`
 }
 
+// ImageIndex represents an OCI image index for referrers API
+type ImageIndex struct {
+	SchemaVersion int               `json:"schemaVersion"`
+	MediaType     string            `json:"mediaType"`
+	Manifests     []Descriptor      `json:"manifests"`
+	Annotations   map[string]string `json:"annotations,omitempty"`
+}
+
 // Descriptor represents a content descriptor
 type Descriptor struct {
 	MediaType    string            `json:"mediaType"`

@@ -149,6 +149,14 @@ func (s *StorageMetrics) ManifestExists(ctx context.Context, repo, reference str
 	return exists, err
 }
 
+// GetReferrers implements storage.ManifestStore
+func (s *StorageMetrics) GetReferrers(ctx context.Context, repo, digest string) ([]types.Descriptor, error) {
+	start := time.Now()
+	referrers, err := s.store.GetReferrers(ctx, repo, digest)
+	s.recordOperation("get_referrers", start, err)
+	return referrers, err
+}
+
 // CreateUpload implements storage.UploadManager
 func (s *StorageMetrics) CreateUpload(ctx context.Context, repo string) (*types.Upload, error) {
 	start := time.Now()

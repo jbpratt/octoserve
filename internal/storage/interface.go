@@ -48,6 +48,9 @@ type ManifestStore interface {
 
 	// ManifestExists checks if a manifest exists
 	ManifestExists(ctx context.Context, repo, reference string) (bool, error)
+
+	// GetReferrers returns manifests that reference the given digest as subject
+	GetReferrers(ctx context.Context, repo, digest string) ([]types.Descriptor, error)
 }
 
 // UploadManager handles blob upload sessions
