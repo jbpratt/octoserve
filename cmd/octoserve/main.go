@@ -15,6 +15,8 @@ import (
 	"github.com/jbpratt/octoserve/internal/api/handlers"
 	"github.com/jbpratt/octoserve/internal/api/middleware"
 	"github.com/jbpratt/octoserve/internal/config"
+	"github.com/jbpratt/octoserve/internal/metrics"
+	"github.com/jbpratt/octoserve/internal/storage"
 	"github.com/jbpratt/octoserve/internal/storage/filesystem"
 )
 
@@ -52,12 +54,22 @@ func main() {
 	logger.Info("Starting octoserve", "version", "0.1.0", "config_file", *configFile)
 
 	// Initialize storage backend
-	store, err := filesystem.New(cfg.Storage.Path)
+	baseStore, err := filesystem.New(cfg.Storage.Path)
 	if err != nil {
 		logger.Error("Failed to initialize storage", "error", err)
 		os.Exit(1)
 	}
 	logger.Info("Storage initialized", "type", cfg.Storage.Type, "path", cfg.Storage.Path)
+
+	// Initialize metrics if enabled
+	var metricsRegistry *metrics.Registry
+	var store storage.Store = baseStore
+	
+	if cfg.Metrics.Enabled {
+		metricsRegistry = metrics.NewRegistry()
+		store = metrics.NewStorageMetrics(baseStore, metricsRegistry)
+		logger.Info("Metrics enabled", "endpoint", cfg.Metrics.Endpoint)
+	}
 
 	// Create handlers
 	registryHandler := handlers.NewRegistryHandler(store)
@@ -92,15 +104,35 @@ func main() {
 	// Tag listing
 	router.GET("/v2/{name}/tags/list", manifestHandler.ListTags)
 
+	// Add metrics endpoint if enabled
+	if cfg.Metrics.Enabled {
+		var username, password string
+		if cfg.Metrics.BasicAuth != nil {
+			username = cfg.Metrics.BasicAuth.Username
+			password = cfg.Metrics.BasicAuth.Password
+		}
+		router.GET(cfg.Metrics.Endpoint, metrics.Handler(metricsRegistry, username, password).ServeHTTP)
+	}
+
 	// Apply middleware
-	handler := middleware.Chain(
+	middlewares := []func(http.Handler) http.Handler{
 		middleware.SetCORSHeaders,
 		middleware.SetDockerHeaders,
 		middleware.RequestLogger(logger),
 		middleware.ValidateRepository,
 		middleware.ValidateReference,
 		middleware.ValidateDigest,
-	)(router)
+	}
+
+	// Add metrics middleware if enabled
+	if cfg.Metrics.Enabled {
+		middlewares = append([]func(http.Handler) http.Handler{
+			metrics.SkipMetricsEndpoint(cfg.Metrics.Endpoint),
+			metrics.HTTPMetrics(metricsRegistry),
+		}, middlewares...)
+	}
+
+	handler := middleware.Chain(middlewares...)(router)
 
 	// Create HTTP server
 	server := &http.Server{

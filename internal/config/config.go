@@ -12,6 +12,7 @@ type Config struct {
 	Server  ServerConfig  `json:"server"`
 	Storage StorageConfig `json:"storage"`
 	Logging LoggingConfig `json:"logging"`
+	Metrics MetricsConfig `json:"metrics"`
 }
 
 // ServerConfig contains HTTP server configuration
@@ -35,6 +36,19 @@ type LoggingConfig struct {
 	Format string `json:"format"`
 }
 
+// MetricsConfig contains metrics configuration
+type MetricsConfig struct {
+	Enabled   bool              `json:"enabled"`
+	Endpoint  string            `json:"endpoint"`
+	BasicAuth *BasicAuthConfig  `json:"basic_auth,omitempty"`
+}
+
+// BasicAuthConfig contains basic authentication configuration
+type BasicAuthConfig struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
 // Default returns a configuration with sensible defaults
 func Default() *Config {
 	return &Config{
@@ -52,6 +66,10 @@ func Default() *Config {
 		Logging: LoggingConfig{
 			Level:  "info",
 			Format: "json",
+		},
+		Metrics: MetricsConfig{
+			Enabled:  true,
+			Endpoint: "/metrics",
 		},
 	}
 }
@@ -174,6 +192,28 @@ func (c *Config) LoadFromEnv() {
 	
 	if format := os.Getenv("OCTOSERVE_LOG_FORMAT"); format != "" {
 		c.Logging.Format = format
+	}
+	
+	if enabled := os.Getenv("OCTOSERVE_METRICS_ENABLED"); enabled != "" {
+		c.Metrics.Enabled = enabled == "true" || enabled == "1"
+	}
+	
+	if endpoint := os.Getenv("OCTOSERVE_METRICS_ENDPOINT"); endpoint != "" {
+		c.Metrics.Endpoint = endpoint
+	}
+	
+	if username := os.Getenv("OCTOSERVE_METRICS_USERNAME"); username != "" {
+		if c.Metrics.BasicAuth == nil {
+			c.Metrics.BasicAuth = &BasicAuthConfig{}
+		}
+		c.Metrics.BasicAuth.Username = username
+	}
+	
+	if password := os.Getenv("OCTOSERVE_METRICS_PASSWORD"); password != "" {
+		if c.Metrics.BasicAuth == nil {
+			c.Metrics.BasicAuth = &BasicAuthConfig{}
+		}
+		c.Metrics.BasicAuth.Password = password
 	}
 }
 
