@@ -1,0 +1,195 @@
+syntax = "proto3";
+
+package octoserve.p2p;
+
+option go_package = "github.com/jbpratt/octoserve/internal/p2p/proto";
+
+// P2PService defines the gRPC service for peer-to-peer communication
+service P2PService {
+  // Health checking
+  rpc Ping(PingRequest) returns (PingResponse);
+  
+  // Blob operations
+  rpc GetBlob(GetBlobRequest) returns (stream BlobChunk);
+  rpc PutBlob(stream BlobChunk) returns (PutBlobResponse);
+  rpc HasBlob(HasBlobRequest) returns (HasBlobResponse);
+  
+  // Manifest operations
+  rpc GetManifest(GetManifestRequest) returns (GetManifestResponse);
+  rpc PutManifest(PutManifestRequest) returns (PutManifestResponse);
+  rpc HasManifest(HasManifestRequest) returns (HasManifestResponse);
+  
+  // Peer discovery and management
+  rpc GetPeers(GetPeersRequest) returns (GetPeersResponse);
+  rpc AnnounceNode(AnnounceNodeRequest) returns (AnnounceNodeResponse);
+  
+  // Replication operations
+  rpc ReplicateBlob(ReplicateBlobRequest) returns (ReplicateBlobResponse);
+  rpc SyncManifest(SyncManifestRequest) returns (SyncManifestResponse);
+}
+
+// Ping request and response for health checking
+message PingRequest {
+  string node_id = 1;
+  int64 timestamp = 2; // Unix timestamp in seconds
+}
+
+message PingResponse {
+  string node_id = 1;
+  int64 timestamp = 2; // Unix timestamp in seconds
+  NodeStatus status = 3;
+}
+
+// Blob-related messages
+message GetBlobRequest {
+  string digest = 1;
+  int64 offset = 2;
+  int64 limit = 3;
+}
+
+message BlobChunk {
+  string digest = 1;
+  int64 offset = 2;
+  bytes data = 3;
+  bool is_final = 4;
+}
+
+message PutBlobResponse {
+  string digest = 1;
+  int64 size = 2;
+  bool success = 3;
+  string error = 4;
+}
+
+message HasBlobRequest {
+  string digest = 1;
+}
+
+message HasBlobResponse {
+  bool exists = 1;
+  int64 size = 2;
+}
+
+// Manifest-related messages
+message GetManifestRequest {
+  string repository = 1;
+  string reference = 2;
+}
+
+message GetManifestResponse {
+  bytes manifest_data = 1;
+  string media_type = 2;
+  string digest = 3;
+  int64 size = 4;
+}
+
+message PutManifestRequest {
+  string repository = 1;
+  string reference = 2;
+  bytes manifest_data = 3;
+  string media_type = 4;
+}
+
+message PutManifestResponse {
+  string digest = 1;
+  bool success = 2;
+  string error = 3;
+}
+
+message HasManifestRequest {
+  string repository = 1;
+  string reference = 2;
+}
+
+message HasManifestResponse {
+  bool exists = 1;
+  string digest = 2;
+  int64 size = 3;
+}
+
+// Peer discovery messages
+message GetPeersRequest {
+  string node_id = 1;
+}
+
+message GetPeersResponse {
+  repeated PeerInfo peers = 1;
+}
+
+message AnnounceNodeRequest {
+  PeerInfo peer_info = 1;
+}
+
+message AnnounceNodeResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+// Replication messages
+message ReplicateBlobRequest {
+  string digest = 1;
+  repeated string target_peers = 2;
+  ReplicationStrategy strategy = 3;
+}
+
+message ReplicateBlobResponse {
+  bool success = 1;
+  repeated string successful_peers = 2;
+  repeated string failed_peers = 3;
+  string error = 4;
+}
+
+message SyncManifestRequest {
+  string repository = 1;
+  string reference = 2;
+  bytes manifest_data = 3;
+  string digest = 4;
+  int64 timestamp = 5; // Unix timestamp in seconds
+}
+
+message SyncManifestResponse {
+  bool success = 1;
+  bool conflict = 2;
+  string error = 3;
+}
+
+// Common data structures
+message PeerInfo {
+  string id = 1;
+  string address = 2;
+  int32 port = 3;
+  map<string, string> metadata = 4;
+  int64 last_seen = 5; // Unix timestamp in seconds
+  NodeStatus status = 6;
+}
+
+message NodeStatus {
+  HealthStatus health = 1;
+  int64 uptime_seconds = 2;
+  string version = 3;
+  map<string, string> capabilities = 4;
+  ResourceInfo resources = 5;
+}
+
+message ResourceInfo {
+  int64 storage_bytes_used = 1;
+  int64 storage_bytes_available = 2;
+  int64 blob_count = 3;
+  int64 manifest_count = 4;
+  double cpu_usage_percent = 5;
+  double memory_usage_percent = 6;
+}
+
+// Enums
+enum HealthStatus {
+  HEALTH_UNKNOWN = 0;
+  HEALTH_HEALTHY = 1;
+  HEALTH_DEGRADED = 2;
+  HEALTH_UNHEALTHY = 3;
+}
+
+enum ReplicationStrategy {
+  REPLICATION_EAGER = 0;
+  REPLICATION_LAZY = 1;
+  REPLICATION_HYBRID = 2;
+}

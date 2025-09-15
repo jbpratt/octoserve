@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -13,6 +14,7 @@ type Config struct {
 	Storage StorageConfig `json:"storage"`
 	Logging LoggingConfig `json:"logging"`
 	Metrics MetricsConfig `json:"metrics"`
+	P2P     P2PConfig     `json:"p2p"`
 }
 
 // ServerConfig contains HTTP server configuration
@@ -49,6 +51,51 @@ type BasicAuthConfig struct {
 	Password string `json:"password"`
 }
 
+// P2PConfig contains peer-to-peer configuration
+type P2PConfig struct {
+	Enabled        bool              `json:"enabled"`
+	NodeID         string            `json:"node_id"`
+	Port           int               `json:"port"`
+	BootstrapPeers []string          `json:"bootstrap_peers"`
+	Discovery      DiscoveryConfig   `json:"discovery"`
+	Replication    ReplicationConfig `json:"replication"`
+	HealthCheck    HealthCheckConfig `json:"health_check"`
+	Transport      TransportConfig   `json:"transport"`
+}
+
+// DiscoveryConfig contains peer discovery configuration
+type DiscoveryConfig struct {
+	Method        string        `json:"method"` // "static", "dns", "consul", "mdns"
+	Interval      time.Duration `json:"interval"`
+	Timeout       time.Duration `json:"timeout"`
+	ConsulAddress string        `json:"consul_address,omitempty"`
+	DNSName       string        `json:"dns_name,omitempty"`
+}
+
+// ReplicationConfig contains replication strategy configuration
+type ReplicationConfig struct {
+	Factor          int           `json:"factor"`   // Number of replicas
+	Strategy        string        `json:"strategy"` // "eager", "lazy", "hybrid"
+	SyncInterval    time.Duration `json:"sync_interval"`
+	ConsistencyMode string        `json:"consistency_mode"` // "eventual", "strong"
+}
+
+// HealthCheckConfig contains health checking configuration
+type HealthCheckConfig struct {
+	Interval         time.Duration `json:"interval"`
+	Timeout          time.Duration `json:"timeout"`
+	FailureThreshold int           `json:"failure_threshold"`
+	Workers          int           `json:"workers"`
+}
+
+// TransportConfig contains transport layer configuration
+type TransportConfig struct {
+	Protocol       string        `json:"protocol"` // "grpc", "http"
+	MaxConnections int           `json:"max_connections"`
+	IdleTimeout    time.Duration `json:"idle_timeout"`
+	MaxMessageSize int           `json:"max_message_size"`
+}
+
 // Default returns a configuration with sensible defaults
 func Default() *Config {
 	return &Config{
@@ -70,6 +117,33 @@ func Default() *Config {
 		Metrics: MetricsConfig{
 			Enabled:  true,
 			Endpoint: "/metrics",
+		},
+		P2P: P2PConfig{
+			Enabled: false,
+			Port:    6000,
+			Discovery: DiscoveryConfig{
+				Method:   "static",
+				Interval: 30 * time.Second,
+				Timeout:  10 * time.Second,
+			},
+			Replication: ReplicationConfig{
+				Factor:          3,
+				Strategy:        "eager",
+				SyncInterval:    60 * time.Second,
+				ConsistencyMode: "eventual",
+			},
+			HealthCheck: HealthCheckConfig{
+				Interval:         15 * time.Second,
+				Timeout:          5 * time.Second,
+				FailureThreshold: 3,
+				Workers:          10,
+			},
+			Transport: TransportConfig{
+				Protocol:       "grpc",
+				MaxConnections: 100,
+				IdleTimeout:    5 * time.Minute,
+				MaxMessageSize: 32 * 1024 * 1024, // 32MB
+			},
 		},
 	}
 }
@@ -162,6 +236,97 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("invalid log format: %s", c.Logging.Format)
 	}
 
+	// Validate P2P config
+	if err := c.validateP2P(); err != nil {
+		return fmt.Errorf("invalid P2P configuration: %w", err)
+	}
+
+	return nil
+}
+
+// validateP2P validates P2P configuration
+func (c *Config) validateP2P() error {
+	if !c.P2P.Enabled {
+		return nil // Skip validation if P2P is disabled
+	}
+
+	// Validate port
+	if c.P2P.Port < 1 || c.P2P.Port > 65535 {
+		return fmt.Errorf("invalid P2P port: %d", c.P2P.Port)
+	}
+
+	// Validate node ID if provided
+	if c.P2P.NodeID == "" {
+		// Generate a default node ID if not provided
+		hostname, _ := os.Hostname()
+		if hostname != "" {
+			c.P2P.NodeID = hostname
+		}
+	}
+
+	// Validate discovery method
+	validDiscoveryMethods := map[string]bool{
+		"static": true,
+		"dns":    true,
+		"consul": true,
+		"mdns":   true,
+	}
+	if !validDiscoveryMethods[c.P2P.Discovery.Method] {
+		return fmt.Errorf("invalid discovery method: %s", c.P2P.Discovery.Method)
+	}
+
+	// Validate replication factor
+	if c.P2P.Replication.Factor < 1 {
+		return fmt.Errorf("replication factor must be at least 1: %d", c.P2P.Replication.Factor)
+	}
+
+	// Validate replication strategy
+	validStrategies := map[string]bool{
+		"eager":  true,
+		"lazy":   true,
+		"hybrid": true,
+	}
+	if !validStrategies[c.P2P.Replication.Strategy] {
+		return fmt.Errorf("invalid replication strategy: %s", c.P2P.Replication.Strategy)
+	}
+
+	// Validate consistency mode
+	validConsistency := map[string]bool{
+		"eventual": true,
+		"strong":   true,
+	}
+	if !validConsistency[c.P2P.Replication.ConsistencyMode] {
+		return fmt.Errorf("invalid consistency mode: %s", c.P2P.Replication.ConsistencyMode)
+	}
+
+	// Validate transport protocol
+	validProtocols := map[string]bool{
+		"grpc": true,
+		"http": true,
+	}
+	if !validProtocols[c.P2P.Transport.Protocol] {
+		return fmt.Errorf("invalid transport protocol: %s", c.P2P.Transport.Protocol)
+	}
+
+	// Validate timeouts
+	if c.P2P.Discovery.Interval <= 0 {
+		return fmt.Errorf("discovery interval must be positive")
+	}
+	if c.P2P.Discovery.Timeout <= 0 {
+		return fmt.Errorf("discovery timeout must be positive")
+	}
+	if c.P2P.HealthCheck.Interval <= 0 {
+		return fmt.Errorf("health check interval must be positive")
+	}
+	if c.P2P.HealthCheck.Timeout <= 0 {
+		return fmt.Errorf("health check timeout must be positive")
+	}
+
+	// Validate worker count
+	if c.P2P.HealthCheck.Workers < 1 {
+		return fmt.Errorf("health check workers must be at least 1")
+	}
+
 	return nil
 }
 
@@ -215,6 +380,47 @@ func (c *Config) LoadFromEnv() {
 		}
 		c.Metrics.BasicAuth.Password = password
 	}
+
+	// P2P configuration
+	if enabled := os.Getenv("OCTOSERVE_P2P_ENABLED"); enabled != "" {
+		c.P2P.Enabled = enabled == "true" || enabled == "1"
+	}
+
+	if nodeID := os.Getenv("OCTOSERVE_P2P_NODE_ID"); nodeID != "" {
+		c.P2P.NodeID = nodeID
+	}
+
+	if port := os.Getenv("OCTOSERVE_P2P_PORT"); port != "" {
+		if p, err := parsePort(port); err == nil {
+			c.P2P.Port = p
+		}
+	}
+
+	if peers := os.Getenv("OCTOSERVE_P2P_BOOTSTRAP_PEERS"); peers != "" {
+		// Split comma-separated peers
+		c.P2P.BootstrapPeers = strings.Split(peers, ",")
+		for i, peer := range c.P2P.BootstrapPeers {
+			c.P2P.BootstrapPeers[i] = strings.TrimSpace(peer)
+		}
+	}
+
+	if method := os.Getenv("OCTOSERVE_P2P_DISCOVERY_METHOD"); method != "" {
+		c.P2P.Discovery.Method = method
+	}
+
+	if strategy := os.Getenv("OCTOSERVE_P2P_REPLICATION_STRATEGY"); strategy != "" {
+		c.P2P.Replication.Strategy = strategy
+	}
+
+	if factor := os.Getenv("OCTOSERVE_P2P_REPLICATION_FACTOR"); factor != "" {
+		if f, err := parsePositiveInt(factor); err == nil {
+			c.P2P.Replication.Factor = f
+		}
+	}
+
+	if protocol := os.Getenv("OCTOSERVE_P2P_TRANSPORT_PROTOCOL"); protocol != "" {
+		c.P2P.Transport.Protocol = protocol
+	}
 }
 
 // parsePort parses a port string to int
@@ -227,4 +433,16 @@ func parsePort(portStr string) (int, error) {
 		return 0, fmt.Errorf("port out of range: %d", port)
 	}
 	return port, nil
+}
+
+// parsePositiveInt parses a positive integer string
+func parsePositiveInt(intStr string) (int, error) {
+	var value int
+	if _, err := fmt.Sscanf(intStr, "%d", &value); err != nil {
+		return 0, err
+	}
+	if value < 1 {
+		return 0, fmt.Errorf("value must be positive: %d", value)
+	}
+	return value, nil
 }

@@ -16,7 +16,9 @@ import (
 	"github.com/jbpratt/octoserve/internal/api/middleware"
 	"github.com/jbpratt/octoserve/internal/config"
 	"github.com/jbpratt/octoserve/internal/metrics"
+	"github.com/jbpratt/octoserve/internal/p2p"
 	"github.com/jbpratt/octoserve/internal/storage"
+	"github.com/jbpratt/octoserve/internal/storage/distributed"
 	"github.com/jbpratt/octoserve/internal/storage/filesystem"
 )
 
@@ -61,13 +63,37 @@ func main() {
 	}
 	logger.Info("Storage initialized", "type", cfg.Storage.Type, "path", cfg.Storage.Path)
 
+	// Initialize P2P if enabled
+	var p2pManager *p2p.Manager
+	var store storage.Store = baseStore
+
+	if cfg.P2P.Enabled {
+		logger.Info("Initializing P2P subsystem", "node_id", cfg.P2P.NodeID)
+
+		p2pManager, err = p2p.NewManager(cfg.P2P, baseStore, logger)
+		if err != nil {
+			logger.Error("Failed to create P2P manager", "error", err)
+			os.Exit(1)
+		}
+
+		// Create distributed store
+		distributedConfig := distributed.Config{
+			ReplicationFactor: cfg.P2P.Replication.Factor,
+			Strategy:          cfg.P2P.Replication.Strategy,
+			ConsistencyMode:   cfg.P2P.Replication.ConsistencyMode,
+			RequestTimeout:    30 * time.Second,
+		}
+		store = distributed.New(baseStore, p2pManager, logger, distributedConfig)
+
+		logger.Info("P2P enabled", "node_id", p2pManager.GetNodeID(), "port", cfg.P2P.Port)
+	}
+
 	// Initialize metrics if enabled
 	var metricsRegistry *metrics.Registry
-	var store storage.Store = baseStore
 
 	if cfg.Metrics.Enabled {
 		metricsRegistry = metrics.NewRegistry()
-		store = metrics.NewStorageMetrics(baseStore, metricsRegistry)
+		store = metrics.NewStorageMetrics(store, metricsRegistry)
 		logger.Info("Metrics enabled", "endpoint", cfg.Metrics.Endpoint)
 	}
 
@@ -147,6 +173,16 @@ func main() {
 		IdleTimeout:  cfg.Server.IdleTimeout,
 	}
 
+	// Start P2P manager if enabled
+	if p2pManager != nil {
+		logger.Info("Starting P2P manager")
+		if err := p2pManager.Start(context.Background()); err != nil {
+			logger.Error("Failed to start P2P manager", "error", err)
+			os.Exit(1)
+		}
+		logger.Info("P2P manager started successfully")
+	}
+
 	// Start server in goroutine
 	go func() {
 		logger.Info("Starting HTTP server", "address", server.Addr)
@@ -166,6 +202,16 @@ func main() {
 	// Graceful shutdown
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+
+	// Stop P2P manager first
+	if p2pManager != nil {
+		logger.Info("Stopping P2P manager...")
+		if err := p2pManager.Stop(); err != nil {
+			logger.Error("Error stopping P2P manager", "error", err)
+		} else {
+			logger.Info("P2P manager stopped")
+		}
+	}
 
 	if err := server.Shutdown(ctx); err != nil {
 		logger.Error("Server forced to shutdown", "error", err)
