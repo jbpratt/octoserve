@@ -180,6 +180,12 @@ func (h *ManifestHandler) PutManifest(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Location", location)
 	w.Header().Set("Docker-Content-Digest", manifest.Digest)
+
+	// Set OCI-Subject header if manifest has a subject field
+	if manifest.Subject != nil && manifest.Subject.Digest != "" {
+		w.Header().Set("OCI-Subject", manifest.Subject.Digest)
+	}
+
 	w.WriteHeader(http.StatusCreated)
 }
 
