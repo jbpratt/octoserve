@@ -510,7 +510,7 @@ func (s *P2PServer) GetBlob(req *proto.GetBlobRequest, stream proto.P2PService_G
 	if distributedStore, ok := s.store.(interface {
 		TriggerLazyReplication(ctx context.Context, digest string)
 	}); ok {
-		go distributedStore.TriggerLazyReplication(context.Background(), req.Digest)
+		go distributedStore.TriggerLazyReplication(stream.Context(), req.Digest)
 	}
 
 	const chunkSize = 64 * 1024 // 64KB chunks

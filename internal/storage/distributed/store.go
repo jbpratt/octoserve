@@ -16,9 +16,9 @@ import (
 // Store implements a distributed storage backend that wraps a local store
 // and coordinates with peer nodes for replication and availability
 type Store struct {
-	local     storage.Store    // Local storage backend (e.g., filesystem)
+	local     storage.Store     // Local storage backend (e.g., filesystem)
 	transport storage.Transport // Transport layer for peer communication
-	p2pMgr    P2PManager       // P2P manager interface for peer coordination
+	p2pMgr    P2PManager        // P2P manager interface for peer coordination
 	logger    *slog.Logger
 	nodeID    string
 	config    Config
@@ -84,7 +84,7 @@ func (s *Store) PutBlob(ctx context.Context, digest string, content io.Reader) e
 	switch s.config.Strategy {
 	case "eager":
 		// Replicate immediately in background
-		go s.replicateBlobToPeers(context.Background(), digest)
+		go s.replicateBlobToPeers(ctx, digest)
 	case "lazy":
 		// Lazy replication will happen when blob is requested by other nodes
 		s.logger.Debug("Lazy replication configured, will replicate on demand", "digest", digest[:12])
@@ -93,11 +93,11 @@ func (s *Store) PutBlob(ctx context.Context, digest string, content io.Reader) e
 		// For now, treat small blobs as eager, large as lazy
 		size, err := s.local.GetBlobSize(ctx, digest)
 		if err == nil && size < 1024*1024 { // 1MB threshold
-			go s.replicateBlobToPeers(context.Background(), digest)
+			go s.replicateBlobToPeers(ctx, digest)
 		}
 	default:
 		s.logger.Warn("Unknown replication strategy, defaulting to eager", "strategy", s.config.Strategy)
-		go s.replicateBlobToPeers(context.Background(), digest)
+		go s.replicateBlobToPeers(ctx, digest)
 	}
 
 	return nil
@@ -167,7 +167,7 @@ func (s *Store) PutManifest(ctx context.Context, repo, reference string, manifes
 
 	// Replicate to peers for consistency
 	// Manifests are critical, so we always replicate eagerly
-	go s.replicateManifestToPeers(context.Background(), repo, reference, manifest)
+	go s.replicateManifestToPeers(ctx, repo, reference, manifest)
 
 	return nil
 }
@@ -334,7 +334,7 @@ func (s *Store) getBlobFromPeers(ctx context.Context, digest string) (io.ReadClo
 		}
 
 		s.logger.Info("Successfully fetched blob from peer", "digest", digest[:12], "peer", peer.ID)
-		
+
 		// Store the blob locally for future requests (cache the fetched blob)
 		if err := s.local.PutBlob(ctx, digest, reader); err != nil {
 			s.logger.Warn("Failed to cache fetched blob locally", "digest", digest[:12], "error", err)
@@ -433,7 +433,7 @@ func (s *Store) getManifestFromPeers(ctx context.Context, repo, reference string
 		}
 
 		s.logger.Info("Successfully fetched manifest from peer", "repo", repo, "ref", reference, "peer", peer.ID)
-		
+
 		// Store the manifest locally for future requests
 		if err := s.local.PutManifest(ctx, repo, reference, manifest); err != nil {
 			s.logger.Warn("Failed to cache fetched manifest locally", "repo", repo, "ref", reference, "error", err)
@@ -500,10 +500,10 @@ func (s *Store) replicateBlobToPeers(ctx context.Context, digest string) {
 			blobReader := io.NopCloser(bytes.NewReader(data))
 			err := s.transport.SendBlob(ctx, p, digest, blobReader)
 			if err != nil {
-				s.logger.Warn("Failed to replicate blob to peer", 
+				s.logger.Warn("Failed to replicate blob to peer",
 					"digest", digest[:12], "peer", p.ID, "error", err)
 			} else {
-				s.logger.Debug("Successfully replicated blob to peer", 
+				s.logger.Debug("Successfully replicated blob to peer",
 					"digest", digest[:12], "peer", p.ID)
 				successMutex.Lock()
 				successCount++
@@ -514,9 +514,9 @@ func (s *Store) replicateBlobToPeers(ctx context.Context, digest string) {
 
 	wg.Wait()
 
-	s.logger.Info("Blob replication completed", 
-		"digest", digest[:12], 
-		"success_count", successCount, 
+	s.logger.Info("Blob replication completed",
+		"digest", digest[:12],
+		"success_count", successCount,
 		"target_count", len(targetPeers))
 }
 
@@ -557,10 +557,10 @@ func (s *Store) replicateManifestToPeers(ctx context.Context, repo, reference st
 
 			err := s.transport.SendManifest(ctx, p, repo, reference, manifest)
 			if err != nil {
-				s.logger.Warn("Failed to replicate manifest to peer", 
+				s.logger.Warn("Failed to replicate manifest to peer",
 					"repo", repo, "ref", reference, "peer", p.ID, "error", err)
 			} else {
-				s.logger.Debug("Successfully replicated manifest to peer", 
+				s.logger.Debug("Successfully replicated manifest to peer",
 					"repo", repo, "ref", reference, "peer", p.ID)
 				successMutex.Lock()
 				successCount++
@@ -571,9 +571,9 @@ func (s *Store) replicateManifestToPeers(ctx context.Context, repo, reference st
 
 	wg.Wait()
 
-	s.logger.Info("Manifest replication completed", 
+	s.logger.Info("Manifest replication completed",
 		"repo", repo, "ref", reference,
-		"success_count", successCount, 
+		"success_count", successCount,
 		"target_count", len(targetPeers))
 }
 

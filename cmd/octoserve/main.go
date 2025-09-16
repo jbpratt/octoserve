@@ -51,6 +51,10 @@ func main() {
 	// Override with environment variables
 	cfg.LoadFromEnv()
 
+	// Create application context that can be cancelled for graceful shutdown
+	appCtx, appCancel := context.WithCancel(context.Background())
+	defer appCancel()
+
 	// Setup logger
 	logger := setupLogger(cfg.Logging)
 	logger.Info("Starting octoserve", "version", "0.1.0", "config_file", *configFile)
@@ -179,7 +183,7 @@ func main() {
 	// Start P2P manager if enabled
 	if p2pManager != nil {
 		logger.Info("Starting P2P manager")
-		if err := p2pManager.Start(context.Background()); err != nil {
+		if err := p2pManager.Start(appCtx); err != nil {
 			logger.Error("Failed to start P2P manager", "error", err)
 			os.Exit(1)
 		}
@@ -201,6 +205,9 @@ func main() {
 	<-quit
 
 	logger.Info("Shutting down server...")
+
+	// Cancel application context to stop all background operations
+	appCancel()
 
 	// Graceful shutdown
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
