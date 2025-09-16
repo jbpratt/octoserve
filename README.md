@@ -323,10 +323,10 @@ Octoserve implements the OCI Distribution Specification endpoints:
                   │
 ┌─────────────────┴───────────────────────┐
 │         Distributed Store               │
-│  - Local storage wrapper               │
-│  - Cross-node replication              │
-│  - Peer coordination                   │
-│  - Automatic failover                  │
+│  - Local storage wrapper                │
+│  - Cross-node replication               │
+│  - Peer coordination                    │
+│  - Automatic failover                   │
 └─────────────────┬───────────────────────┘
                   │
 ┌─────────────────┴───────────────────────┐
@@ -338,12 +338,12 @@ Octoserve implements the OCI Distribution Specification endpoints:
 
 ┌─────────────────────────────────────────┐
 │              P2P Layer                  │
-│  ┌─────────────┬───────────────────────┐ │
-│  │ P2P Manager │   gRPC Transport      │ │
-│  │ - Discovery │   - Blob transfer     │ │
-│  │ - Health    │   - Manifest sync     │ │
-│  │ - Routing   │   - Peer communication│ │
-│  └─────────────┴───────────────────────┘ │
+│ ┌─────────────┬───────────────────────┐ │
+│ │ P2P Manager │   gRPC Transport      │ │
+│ │ - Discovery │   - Blob transfer     │ │
+│ │ - Health    │   - Manifest sync     │ │
+│ │ - Routing   │   - Peer communication│ │
+│ └─────────────┴───────────────────────┘ │
 └─────────────────────────────────────────┘
 ```
 

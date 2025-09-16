@@ -1,6 +1,7 @@
 distribution-spec
 bin/
-data/
+data*/
 test-results/
 test-data/
 test-octoserve.pid
+config*.json
