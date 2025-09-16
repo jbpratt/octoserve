@@ -8,6 +8,41 @@ import (
 	"time"
 )
 
+// Duration is a custom type that wraps time.Duration and provides
+// JSON marshaling/unmarshaling for human-readable duration strings
+type Duration time.Duration
+
+// MarshalJSON implements json.Marshaler interface
+func (d Duration) MarshalJSON() ([]byte, error) {
+	return json.Marshal(time.Duration(d).String())
+}
+
+// UnmarshalJSON implements json.Unmarshaler interface
+func (d *Duration) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return fmt.Errorf("duration must be a string: %w", err)
+	}
+
+	parsed, err := time.ParseDuration(s)
+	if err != nil {
+		return fmt.Errorf("invalid duration format '%s': %w", s, err)
+	}
+
+	*d = Duration(parsed)
+	return nil
+}
+
+// Duration converts the custom Duration back to time.Duration
+func (d Duration) Duration() time.Duration {
+	return time.Duration(d)
+}
+
+// String returns the string representation of the duration
+func (d Duration) String() string {
+	return time.Duration(d).String()
+}
+
 // Config represents the application configuration
 type Config struct {
 	Server  ServerConfig  `json:"server"`
@@ -19,11 +54,11 @@ type Config struct {
 
 // ServerConfig contains HTTP server configuration
 type ServerConfig struct {
-	Address      string        `json:"address"`
-	Port         int           `json:"port"`
-	ReadTimeout  time.Duration `json:"read_timeout"`
-	WriteTimeout time.Duration `json:"write_timeout"`
-	IdleTimeout  time.Duration `json:"idle_timeout"`
+	Address      string   `json:"address"`
+	Port         int      `json:"port"`
+	ReadTimeout  Duration `json:"read_timeout"`
+	WriteTimeout Duration `json:"write_timeout"`
+	IdleTimeout  Duration `json:"idle_timeout"`
 }
 
 // StorageConfig contains storage backend configuration
@@ -65,35 +100,35 @@ type P2PConfig struct {
 
 // DiscoveryConfig contains peer discovery configuration
 type DiscoveryConfig struct {
-	Method        string        `json:"method"` // "static", "dns", "consul", "mdns"
-	Interval      time.Duration `json:"interval"`
-	Timeout       time.Duration `json:"timeout"`
-	ConsulAddress string        `json:"consul_address,omitempty"`
-	DNSName       string        `json:"dns_name,omitempty"`
+	Method        string   `json:"method"` // "static", "dns", "consul", "mdns"
+	Interval      Duration `json:"interval"`
+	Timeout       Duration `json:"timeout"`
+	ConsulAddress string   `json:"consul_address,omitempty"`
+	DNSName       string   `json:"dns_name,omitempty"`
 }
 
 // ReplicationConfig contains replication strategy configuration
 type ReplicationConfig struct {
-	Factor          int           `json:"factor"`   // Number of replicas
-	Strategy        string        `json:"strategy"` // "eager", "lazy", "hybrid"
-	SyncInterval    time.Duration `json:"sync_interval"`
-	ConsistencyMode string        `json:"consistency_mode"` // "eventual", "strong"
+	Factor          int      `json:"factor"`   // Number of replicas
+	Strategy        string   `json:"strategy"` // "eager", "lazy", "hybrid"
+	SyncInterval    Duration `json:"sync_interval"`
+	ConsistencyMode string   `json:"consistency_mode"` // "eventual", "strong"
 }
 
 // HealthCheckConfig contains health checking configuration
 type HealthCheckConfig struct {
-	Interval         time.Duration `json:"interval"`
-	Timeout          time.Duration `json:"timeout"`
-	FailureThreshold int           `json:"failure_threshold"`
-	Workers          int           `json:"workers"`
+	Interval         Duration `json:"interval"`
+	Timeout          Duration `json:"timeout"`
+	FailureThreshold int      `json:"failure_threshold"`
+	Workers          int      `json:"workers"`
 }
 
 // TransportConfig contains transport layer configuration
 type TransportConfig struct {
-	Protocol       string        `json:"protocol"` // "grpc", "http"
-	MaxConnections int           `json:"max_connections"`
-	IdleTimeout    time.Duration `json:"idle_timeout"`
-	MaxMessageSize int           `json:"max_message_size"`
+	Protocol       string   `json:"protocol"` // "grpc", "http"
+	MaxConnections int      `json:"max_connections"`
+	IdleTimeout    Duration `json:"idle_timeout"`
+	MaxMessageSize int      `json:"max_message_size"`
 }
 
 // Default returns a configuration with sensible defaults
@@ -102,9 +137,9 @@ func Default() *Config {
 		Server: ServerConfig{
 			Address:      "localhost",
 			Port:         5000,
-			ReadTimeout:  30 * time.Second,
-			WriteTimeout: 30 * time.Second,
-			IdleTimeout:  120 * time.Second,
+			ReadTimeout:  Duration(30 * time.Second),
+			WriteTimeout: Duration(30 * time.Second),
+			IdleTimeout:  Duration(120 * time.Second),
 		},
 		Storage: StorageConfig{
 			Type: "filesystem",
@@ -123,25 +158,25 @@ func Default() *Config {
 			Port:    6000,
 			Discovery: DiscoveryConfig{
 				Method:   "static",
-				Interval: 30 * time.Second,
-				Timeout:  10 * time.Second,
+				Interval: Duration(30 * time.Second),
+				Timeout:  Duration(10 * time.Second),
 			},
 			Replication: ReplicationConfig{
 				Factor:          3,
 				Strategy:        "eager",
-				SyncInterval:    60 * time.Second,
+				SyncInterval:    Duration(60 * time.Second),
 				ConsistencyMode: "eventual",
 			},
 			HealthCheck: HealthCheckConfig{
-				Interval:         15 * time.Second,
-				Timeout:          5 * time.Second,
+				Interval:         Duration(15 * time.Second),
+				Timeout:          Duration(5 * time.Second),
 				FailureThreshold: 3,
 				Workers:          10,
 			},
 			Transport: TransportConfig{
 				Protocol:       "grpc",
 				MaxConnections: 100,
-				IdleTimeout:    5 * time.Minute,
+				IdleTimeout:    Duration(5 * time.Minute),
 				MaxMessageSize: 32 * 1024 * 1024, // 32MB
 			},
 		},
@@ -198,11 +233,11 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("invalid server port: %d", c.Server.Port)
 	}
 
-	if c.Server.ReadTimeout < 0 {
+	if c.Server.ReadTimeout.Duration() < 0 {
 		return fmt.Errorf("invalid read timeout: %v", c.Server.ReadTimeout)
 	}
 
-	if c.Server.WriteTimeout < 0 {
+	if c.Server.WriteTimeout.Duration() < 0 {
 		return fmt.Errorf("invalid write timeout: %v", c.Server.WriteTimeout)
 	}
 
@@ -309,16 +344,16 @@ func (c *Config) validateP2P() error {
 	}
 
 	// Validate timeouts
-	if c.P2P.Discovery.Interval <= 0 {
+	if c.P2P.Discovery.Interval.Duration() <= 0 {
 		return fmt.Errorf("discovery interval must be positive")
 	}
-	if c.P2P.Discovery.Timeout <= 0 {
+	if c.P2P.Discovery.Timeout.Duration() <= 0 {
 		return fmt.Errorf("discovery timeout must be positive")
 	}
-	if c.P2P.HealthCheck.Interval <= 0 {
+	if c.P2P.HealthCheck.Interval.Duration() <= 0 {
 		return fmt.Errorf("health check interval must be positive")
 	}
-	if c.P2P.HealthCheck.Timeout <= 0 {
+	if c.P2P.HealthCheck.Timeout.Duration() <= 0 {
 		return fmt.Errorf("health check timeout must be positive")
 	}
 

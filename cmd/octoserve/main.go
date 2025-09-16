@@ -171,9 +171,9 @@ func main() {
 	server := &http.Server{
 		Addr:         cfg.GetServerAddress(),
 		Handler:      handler,
-		ReadTimeout:  cfg.Server.ReadTimeout,
-		WriteTimeout: cfg.Server.WriteTimeout,
-		IdleTimeout:  cfg.Server.IdleTimeout,
+		ReadTimeout:  cfg.Server.ReadTimeout.Duration(),
+		WriteTimeout: cfg.Server.WriteTimeout.Duration(),
+		IdleTimeout:  cfg.Server.IdleTimeout.Duration(),
 	}
 
 	// Start P2P manager if enabled

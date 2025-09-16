@@ -228,7 +228,7 @@ func (m *Manager) FindPeersWithBlob(ctx context.Context, digest string) ([]stora
 func (m *Manager) discoveryLoop(ctx context.Context) {
 	defer m.workerWg.Done()
 
-	ticker := time.NewTicker(m.config.Discovery.Interval)
+	ticker := time.NewTicker(m.config.Discovery.Interval.Duration())
 	defer ticker.Stop()
 
 	for {
@@ -249,7 +249,7 @@ func (m *Manager) discoveryLoop(ctx context.Context) {
 func (m *Manager) healthCheckLoop(ctx context.Context) {
 	defer m.workerWg.Done()
 
-	ticker := time.NewTicker(m.config.HealthCheck.Interval)
+	ticker := time.NewTicker(m.config.HealthCheck.Interval.Duration())
 	defer ticker.Stop()
 
 	for {
@@ -349,7 +349,7 @@ func (m *Manager) checkPeerHealth(ctx context.Context) {
 			defer func() { <-semaphore }()
 
 			// Perform health check with timeout
-			checkCtx, cancel := context.WithTimeout(ctx, m.config.HealthCheck.Timeout)
+			checkCtx, cancel := context.WithTimeout(ctx, m.config.HealthCheck.Timeout.Duration())
 			defer cancel()
 
 			start := time.Now()
