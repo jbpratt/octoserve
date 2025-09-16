@@ -127,6 +127,49 @@ func (m *MockStore) GetUploadStatus(ctx context.Context, uploadID string) (int64
 	return 0, nil
 }
 
+// MockTransport implements the storage.Transport interface for testing
+type MockTransport struct{}
+
+func NewMockTransport() *MockTransport {
+	return &MockTransport{}
+}
+
+func (m *MockTransport) Start(ctx context.Context) error {
+	return nil
+}
+
+func (m *MockTransport) SendBlob(ctx context.Context, peer storage.PeerInfo, digest string, data io.Reader) error {
+	return nil
+}
+
+func (m *MockTransport) RequestBlob(ctx context.Context, peer storage.PeerInfo, digest string) (io.ReadCloser, error) {
+	return nil, storage.ErrBlobNotFound
+}
+
+func (m *MockTransport) HasBlob(ctx context.Context, peer storage.PeerInfo, digest string) (bool, int64, error) {
+	return false, 0, nil
+}
+
+func (m *MockTransport) SendManifest(ctx context.Context, peer storage.PeerInfo, repo, ref string, manifest *types.Manifest) error {
+	return nil
+}
+
+func (m *MockTransport) RequestManifest(ctx context.Context, peer storage.PeerInfo, repo, ref string) (*types.Manifest, error) {
+	return nil, storage.ErrManifestNotFound
+}
+
+func (m *MockTransport) HasManifest(ctx context.Context, peer storage.PeerInfo, repo, ref string) (bool, string, int64, error) {
+	return false, "", 0, nil
+}
+
+func (m *MockTransport) Ping(ctx context.Context, peer storage.PeerInfo) error {
+	return nil
+}
+
+func (m *MockTransport) Close() error {
+	return nil
+}
+
 // MockP2PManager implements the P2PManager interface for testing
 type MockP2PManager struct {
 	nodeID string
@@ -171,6 +214,7 @@ func (m *MockP2PManager) FindPeersWithBlob(ctx context.Context, digest string) (
 func TestDistributedStore(t *testing.T) {
 	// Create test components
 	mockStore := NewMockStore()
+	mockTransport := NewMockTransport()
 	mockP2P := NewMockP2PManager("test-node")
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 
@@ -182,7 +226,7 @@ func TestDistributedStore(t *testing.T) {
 	}
 
 	// Create distributed store
-	store := New(mockStore, mockP2P, logger, config)
+	store := New(mockStore, mockTransport, mockP2P, logger, config)
 
 	// Test blob operations
 	t.Run("blob operations", func(t *testing.T) {
@@ -190,13 +234,13 @@ func TestDistributedStore(t *testing.T) {
 		content := "test blob content"
 
 		// Test PutBlob
-		err := store.PutBlob(context.Background(), digest, strings.NewReader(content))
+		err := store.PutBlob(t.Context(), digest, strings.NewReader(content))
 		if err != nil {
 			t.Fatalf("PutBlob failed: %v", err)
 		}
 
 		// Test BlobExists
-		exists, err := store.BlobExists(context.Background(), digest)
+		exists, err := store.BlobExists(t.Context(), digest)
 		if err != nil {
 			t.Fatalf("BlobExists failed: %v", err)
 		}
@@ -205,7 +249,7 @@ func TestDistributedStore(t *testing.T) {
 		}
 
 		// Test GetBlob
-		reader, err := store.GetBlob(context.Background(), digest)
+		reader, err := store.GetBlob(t.Context(), digest)
 		if err != nil {
 			t.Fatalf("GetBlob failed: %v", err)
 		}
@@ -221,7 +265,7 @@ func TestDistributedStore(t *testing.T) {
 		}
 
 		// Test GetBlobSize
-		size, err := store.GetBlobSize(context.Background(), digest)
+		size, err := store.GetBlobSize(t.Context(), digest)
 		if err != nil {
 			t.Fatalf("GetBlobSize failed: %v", err)
 		}
@@ -242,13 +286,13 @@ func TestDistributedStore(t *testing.T) {
 		}
 
 		// Test PutManifest
-		err := store.PutManifest(context.Background(), repo, reference, manifest)
+		err := store.PutManifest(t.Context(), repo, reference, manifest)
 		if err != nil {
 			t.Fatalf("PutManifest failed: %v", err)
 		}
 
 		// Test ManifestExists
-		exists, err := store.ManifestExists(context.Background(), repo, reference)
+		exists, err := store.ManifestExists(t.Context(), repo, reference)
 		if err != nil {
 			t.Fatalf("ManifestExists failed: %v", err)
 		}
@@ -257,7 +301,7 @@ func TestDistributedStore(t *testing.T) {
 		}
 
 		// Test GetManifest
-		retrievedManifest, err := store.GetManifest(context.Background(), repo, reference)
+		retrievedManifest, err := store.GetManifest(t.Context(), repo, reference)
 		if err != nil {
 			t.Fatalf("GetManifest failed: %v", err)
 		}
@@ -281,7 +325,7 @@ func TestDistributedStore(t *testing.T) {
 		}
 
 		// Test GetPeers
-		peers, err := store.GetPeers(context.Background())
+		peers, err := store.GetPeers(t.Context())
 		if err != nil {
 			t.Fatalf("GetPeers failed: %v", err)
 		}
@@ -290,7 +334,7 @@ func TestDistributedStore(t *testing.T) {
 		}
 
 		// Test GetPeerHealth
-		health := store.GetPeerHealth(context.Background())
+		health := store.GetPeerHealth(t.Context())
 		if len(health) != 0 {
 			t.Fatalf("expected 0 health entries, got %d", len(health))
 		}
@@ -299,6 +343,7 @@ func TestDistributedStore(t *testing.T) {
 
 func TestDistributedStoreBlobNotFound(t *testing.T) {
 	mockStore := NewMockStore()
+	mockTransport := NewMockTransport()
 	mockP2P := NewMockP2PManager("test-node")
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 
@@ -309,10 +354,10 @@ func TestDistributedStoreBlobNotFound(t *testing.T) {
 		RequestTimeout:    5 * time.Second,
 	}
 
-	store := New(mockStore, mockP2P, logger, config)
+	store := New(mockStore, mockTransport, mockP2P, logger, config)
 
 	// Test GetBlob for non-existent blob
-	_, err := store.GetBlob(context.Background(), "sha256:nonexistent")
+	_, err := store.GetBlob(t.Context(), "sha256:nonexistent")
 	if err == nil {
 		t.Fatal("expected error for non-existent blob")
 	}

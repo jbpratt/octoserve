@@ -24,7 +24,7 @@ func TestStore(t *testing.T) {
 		t.Fatalf("Failed to create store: %v", err)
 	}
 
-	ctx := context.Background()
+	ctx := t.Context()
 
 	t.Run("blob operations", func(t *testing.T) {
 		testBlobOperations(t, store, ctx)

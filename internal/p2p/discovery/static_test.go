@@ -44,7 +44,7 @@ func TestStaticDiscovery(t *testing.T) {
 			discovery := NewStaticDiscovery(tt.bootstrapPeers, tt.nodeID)
 			defer discovery.Close()
 
-			peers, err := discovery.Discover(context.Background())
+			peers, err := discovery.Discover(t.Context())
 
 			if tt.expectError && err == nil {
 				t.Fatalf("expected error but got none")
@@ -167,7 +167,7 @@ func TestStaticDiscoveryWatch(t *testing.T) {
 	discovery := NewStaticDiscovery([]string{"peer1:6000", "peer2:6000"}, "test-node")
 	defer discovery.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 
 	watchCh := discovery.Watch(ctx)
@@ -194,7 +194,7 @@ func TestStaticDiscoveryAnnounce(t *testing.T) {
 	}
 
 	// Announce should be a no-op for static discovery
-	err := discovery.Announce(context.Background(), testPeer)
+	err := discovery.Announce(t.Context(), testPeer)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
