@@ -76,6 +76,9 @@ func main() {
 			os.Exit(1)
 		}
 
+		// Get the transport layer from the P2P manager
+		transport := p2pManager.GetTransport()
+
 		// Create distributed store
 		distributedConfig := distributed.Config{
 			ReplicationFactor: cfg.P2P.Replication.Factor,
@@ -83,7 +86,7 @@ func main() {
 			ConsistencyMode:   cfg.P2P.Replication.ConsistencyMode,
 			RequestTimeout:    30 * time.Second,
 		}
-		store = distributed.New(baseStore, p2pManager, logger, distributedConfig)
+		store = distributed.New(baseStore, transport, p2pManager, logger, distributedConfig)
 
 		logger.Info("P2P enabled", "node_id", p2pManager.GetNodeID(), "port", cfg.P2P.Port)
 	}

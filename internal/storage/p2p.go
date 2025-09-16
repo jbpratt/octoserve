@@ -49,7 +49,10 @@ type Transport interface {
 	Start(ctx context.Context) error
 	SendBlob(ctx context.Context, peer PeerInfo, digest string, data io.Reader) error
 	RequestBlob(ctx context.Context, peer PeerInfo, digest string) (io.ReadCloser, error)
+	HasBlob(ctx context.Context, peer PeerInfo, digest string) (bool, int64, error)
 	SendManifest(ctx context.Context, peer PeerInfo, repo, ref string, manifest *types.Manifest) error
+	RequestManifest(ctx context.Context, peer PeerInfo, repo, ref string) (*types.Manifest, error)
+	HasManifest(ctx context.Context, peer PeerInfo, repo, ref string) (bool, string, int64, error)
 	Ping(ctx context.Context, peer PeerInfo) error
 	Close() error
 }

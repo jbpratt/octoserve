@@ -1,7 +1,9 @@
 package transport
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -249,13 +251,116 @@ func (g *GRPCTransport) SendManifest(ctx context.Context, peer storage.PeerInfo,
 		return fmt.Errorf("failed to get connection to peer %s: %w", peer.ID, err)
 	}
 
-	// This is a placeholder - in reality, we'd call the gRPC service
-	_ = conn
-	_ = repo
-	_ = ref
-	_ = manifest
+	client := proto.NewP2PServiceClient(conn)
 
-	return fmt.Errorf("SendManifest not fully implemented yet")
+	// Serialize manifest data
+	manifestData, err := json.Marshal(manifest)
+	if err != nil {
+		return fmt.Errorf("failed to marshal manifest: %w", err)
+	}
+
+	// Add timeout for manifest send
+	manifestCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	resp, err := client.PutManifest(manifestCtx, &proto.PutManifestRequest{
+		Repository:   repo,
+		Reference:    ref,
+		ManifestData: manifestData,
+		MediaType:    manifest.MediaType,
+	})
+	if err != nil {
+		return fmt.Errorf("PutManifest request failed: %w", err)
+	}
+
+	if !resp.Success {
+		return fmt.Errorf("manifest upload failed: %s", resp.Error)
+	}
+
+	return nil
+}
+
+// RequestManifest requests a manifest from a peer
+func (g *GRPCTransport) RequestManifest(ctx context.Context, peer storage.PeerInfo, repo, ref string) (*types.Manifest, error) {
+	conn, err := g.getConnection(ctx, peer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get connection to peer %s: %w", peer.ID, err)
+	}
+
+	client := proto.NewP2PServiceClient(conn)
+
+	// Add timeout for manifest request
+	manifestCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	resp, err := client.GetManifest(manifestCtx, &proto.GetManifestRequest{
+		Repository: repo,
+		Reference:  ref,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("GetManifest request failed: %w", err)
+	}
+
+	// Unmarshal manifest data
+	manifest := &types.Manifest{}
+	err = json.Unmarshal(resp.ManifestData, manifest)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal manifest: %w", err)
+	}
+
+	// Set additional fields from response
+	manifest.MediaType = resp.MediaType
+	manifest.Digest = resp.Digest
+	manifest.Size = resp.Size
+
+	return manifest, nil
+}
+
+// HasManifest checks if a peer has a specific manifest
+func (g *GRPCTransport) HasManifest(ctx context.Context, peer storage.PeerInfo, repo, ref string) (bool, string, int64, error) {
+	conn, err := g.getConnection(ctx, peer)
+	if err != nil {
+		return false, "", 0, fmt.Errorf("failed to get connection to peer %s: %w", peer.ID, err)
+	}
+
+	client := proto.NewP2PServiceClient(conn)
+
+	// Add timeout for HasManifest request
+	manifestCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	resp, err := client.HasManifest(manifestCtx, &proto.HasManifestRequest{
+		Repository: repo,
+		Reference:  ref,
+	})
+	if err != nil {
+		return false, "", 0, fmt.Errorf("HasManifest request failed: %w", err)
+	}
+
+	return resp.Exists, resp.Digest, resp.Size, nil
+}
+
+// HasBlob checks if a peer has a specific blob
+func (g *GRPCTransport) HasBlob(ctx context.Context, peer storage.PeerInfo, digest string) (bool, int64, error) {
+	conn, err := g.getConnection(ctx, peer)
+	if err != nil {
+		return false, 0, fmt.Errorf("failed to get connection to peer %s: %w", peer.ID, err)
+	}
+
+	client := proto.NewP2PServiceClient(conn)
+
+	// Add timeout for HasBlob request
+	blobCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	resp, err := client.HasBlob(blobCtx, &proto.HasBlobRequest{
+		Digest: digest,
+	})
+	if err != nil {
+		return false, 0, fmt.Errorf("HasBlob request failed: %w", err)
+	}
+
+	return resp.Exists, resp.Size, nil
 }
 
 // Ping sends a ping to a peer
@@ -400,6 +505,14 @@ func (s *P2PServer) GetBlob(req *proto.GetBlobRequest, stream proto.P2PService_G
 	}
 	defer reader.Close()
 
+	// Trigger lazy replication if this blob is being requested
+	// This helps ensure popular blobs get replicated automatically
+	if distributedStore, ok := s.store.(interface {
+		TriggerLazyReplication(ctx context.Context, digest string)
+	}); ok {
+		go distributedStore.TriggerLazyReplication(context.Background(), req.Digest)
+	}
+
 	const chunkSize = 64 * 1024 // 64KB chunks
 	buffer := make([]byte, chunkSize)
 	offset := req.Offset
@@ -468,17 +581,116 @@ func (s *P2PServer) HasManifest(ctx context.Context, req *proto.HasManifestReque
 	}, nil
 }
 
-// Placeholder implementations for other methods
+// PutBlob implements the PutBlob RPC method (client streaming)
 func (s *P2PServer) PutBlob(stream proto.P2PService_PutBlobServer) error {
-	return fmt.Errorf("PutBlob not implemented yet")
+	var digest string
+	var buffer bytes.Buffer
+	var totalSize int64
+
+	// Receive chunks from the stream
+	for {
+		chunk, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("failed to receive blob chunk: %w", err)
+		}
+
+		// Set digest from first chunk
+		if digest == "" {
+			digest = chunk.Digest
+		}
+
+		// Validate digest consistency
+		if chunk.Digest != digest {
+			return fmt.Errorf("digest mismatch in chunk: expected %s, got %s", digest, chunk.Digest)
+		}
+
+		// Write chunk data to buffer
+		if len(chunk.Data) > 0 {
+			n, err := buffer.Write(chunk.Data)
+			if err != nil {
+				return fmt.Errorf("failed to write chunk data: %w", err)
+			}
+			totalSize += int64(n)
+		}
+
+		// Check if this is the final chunk
+		if chunk.IsFinal {
+			break
+		}
+	}
+
+	// Store the blob in local storage
+	reader := bytes.NewReader(buffer.Bytes())
+	err := s.store.PutBlob(stream.Context(), digest, reader)
+	if err != nil {
+		return stream.SendAndClose(&proto.PutBlobResponse{
+			Digest:  digest,
+			Size:    totalSize,
+			Success: false,
+			Error:   err.Error(),
+		})
+	}
+
+	// Send success response
+	return stream.SendAndClose(&proto.PutBlobResponse{
+		Digest:  digest,
+		Size:    totalSize,
+		Success: true,
+	})
 }
 
 func (s *P2PServer) GetManifest(ctx context.Context, req *proto.GetManifestRequest) (*proto.GetManifestResponse, error) {
-	return nil, fmt.Errorf("GetManifest not implemented yet")
+	manifest, err := s.store.GetManifest(ctx, req.Repository, req.Reference)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get manifest: %w", err)
+	}
+
+	// Marshal manifest data
+	manifestData, err := json.Marshal(manifest)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal manifest: %w", err)
+	}
+
+	return &proto.GetManifestResponse{
+		ManifestData: manifestData,
+		MediaType:    manifest.MediaType,
+		Digest:       manifest.Digest,
+		Size:         manifest.Size,
+	}, nil
 }
 
 func (s *P2PServer) PutManifest(ctx context.Context, req *proto.PutManifestRequest) (*proto.PutManifestResponse, error) {
-	return nil, fmt.Errorf("PutManifest not implemented yet")
+	// Create manifest object from request
+	manifest := &types.Manifest{
+		MediaType: req.MediaType,
+	}
+
+	// Unmarshal manifest data
+	err := json.Unmarshal(req.ManifestData, manifest)
+	if err != nil {
+		return &proto.PutManifestResponse{
+			Success: false,
+			Error:   fmt.Sprintf("failed to unmarshal manifest: %v", err),
+		}, nil
+	}
+
+	// Store the manifest
+	err = s.store.PutManifest(ctx, req.Repository, req.Reference, manifest)
+	if err != nil {
+		return &proto.PutManifestResponse{
+			Digest:  manifest.Digest,
+			Success: false,
+			Error:   err.Error(),
+		}, nil
+	}
+
+	return &proto.PutManifestResponse{
+		Digest:  manifest.Digest,
+		Success: true,
+	}, nil
 }
 
 func (s *P2PServer) GetPeers(ctx context.Context, req *proto.GetPeersRequest) (*proto.GetPeersResponse, error) {

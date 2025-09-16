@@ -138,6 +138,11 @@ func (m *Manager) GetNodeID() string {
 	return m.nodeID
 }
 
+// GetTransport returns the transport layer for peer communication
+func (m *Manager) GetTransport() storage.Transport {
+	return m.transport
+}
+
 // IsHealthy returns whether the P2P manager is healthy
 func (m *Manager) IsHealthy() bool {
 	return m.started
